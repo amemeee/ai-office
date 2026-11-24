@@ -4,8 +4,68 @@ import { sp, px, poly } from './draw.js';
 
 const INK = '#2b1d17';
 
+// ---- 2D art sprites (public/assets/chars/<name>-<pose>.png). Any agent without
+// art simply keeps the procedural pixel character below.
+const ART = { developer: 'dex', documents: 'paige', email: 'milo', automation: 'otto' };
+const IDLE_ACTS = ['drink', 'hold', 'stretch', 'think', 'watch', 'yawn']; // only ever played while the agent is really Idle
+const POSES = ['stand', 'walk1', 'walk2', 'sit', 'alert', ...IDLE_ACTS];
+const SPRITE_H = 160; // pixel height the art files were cut at
+const DRAW_H = 40;    // height in office-buffer pixels (drawn hi-res on screen)
+const sprites = {};   // agentId -> { pose: Image } once all poses loaded
+const silhouettes = new Map();
+
+for (const [agent, name] of Object.entries(ART)) {
+  const set = {}; let ok = 0, bad = false;
+  for (const p of POSES) {
+    const img = new Image();
+    img.onload = () => { if (++ok === POSES.length && !bad) sprites[agent] = set; };
+    img.onerror = () => { bad = true; };
+    img.src = `assets/chars/${name}-${p}.png`;
+    set[p] = img;
+  }
+}
+
+function silhouette(img, color) {
+  const k = img.src + color;
+  let c = silhouettes.get(k);
+  if (!c) {
+    c = document.createElement('canvas'); c.width = img.width; c.height = img.height;
+    const x = c.getContext('2d');
+    x.drawImage(img, 0, 0); x.globalCompositeOperation = 'source-in'; x.fillStyle = color; x.fillRect(0, 0, c.width, c.height);
+    silhouettes.set(k, c);
+  }
+  return c;
+}
+
+export const hasSprite = (id) => !!sprites[id];
+export const spriteTop = (c) => DRAW_H * (c.pose === 'sit' ? 0.9 : 1);
+
+/** Hi-res draw onto the screen canvas. (sx, sy) = feet in CSS px, k = view scale. */
+export function drawSpriteHi(ctx, c, t, sx, sy, k, tint = null, ox = 0, oy = 0) {
+  const set = sprites[c.id];
+  const sit = c.pose === 'sit', walk = c.pose === 'walk';
+  let pose = 'stand';
+  if (sit) pose = 'sit';
+  else if (walk) pose = ['walk1', 'stand', 'walk2', 'stand'][Math.floor(t * 8) % 4];
+  else if (c.status === 'waiting_approval') pose = 'alert';
+  else if (c.act && c.status === 'idle') pose = c.act;
+  const img = set[pose];
+  const f = (DRAW_H * k) / SPRITE_H, w = img.width * f, h = img.height * f;
+  const bob = walk ? -Math.abs(Math.sin(t * 8 * Math.PI / 2)) * 1.6 * k : 0; // body rises mid-step
+  const flip = c.dir === 'SW' || c.dir === 'NW';
+  ctx.save();
+  ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
+  ctx.translate(sx + ox, sy + oy + (sit ? 3 : 1) * k + bob); if (flip) ctx.scale(-1, 1);
+  ctx.drawImage(tint ? silhouette(img, tint) : img, -w / 2, -h, w, h);
+  ctx.restore();
+}
+
 /** Draws one character with its feet at world position (c.x, c.y). */
 export function drawChar(ctx, c, t, tint = null, ox = 0, oy = 0) {
+  if (sprites[c.id]) { // art is drawn hi-res by the office; only the contact shadow lives in the buffer
+    if (!tint && c.pose !== 'sit') { const [x, y] = sp(c.x, c.y, 0); px(ctx, 'rgba(0,0,0,0.22)', x - 6, y - 1, 12, 2); }
+    return;
+  }
   const [fx0, fy0] = sp(c.x, c.y, 0);
   const fx = fx0 + ox, fy = fy0 + oy;
   const L = c.look;
@@ -91,10 +151,11 @@ const BUBBLES = {
 
 /** Status bubble above a character (pixel art). Only shown for real states. */
 export function drawBubble(ctx, c, t) {
-  const b = BUBBLES[c.status];
-  if (!b || (c.status === 'working' && !c.typing && c.pose !== 'walk')) return;
+  const b = BUBBLES[c.talking ? 'working' : c.status];
+  if (!b || (!c.talking && c.status === 'working' && !c.typing && c.pose !== 'walk')) return;
   const [fx] = sp(c.x, c.y, 0);
-  const x = fx - 7, y = Math.round(c.headY - 13 - (c.status === 'waiting_approval' ? Math.floor(t * 3) % 2 : 0));
+  const headY = sprites[c.id] ? sp(c.x, c.y, 0)[1] - spriteTop(c) : c.headY;
+  const x = fx - 7, y = Math.round(headY - 13 - (c.status === 'waiting_approval' ? Math.floor(t * 3) % 2 : 0));
   px(ctx, INK, x, y, 15, 10);
   px(ctx, b.bg, x + 1, y + 1, 13, 8);
   poly(ctx, INK, [[x + 5, y + 10], [x + 10, y + 10], [x + 7.5, y + 13]]);
@@ -114,7 +175,10 @@ export function drawBubble(ctx, c, t) {
 
 // ---- navigation ------------------------------------------------------------
 
-function findPath(blocked, room, from, to) {
+let NAV = null; // { grid, step } for walking between rooms (set by the office)
+export const setNav = (grid, step) => { NAV = { grid, step }; };
+
+function findPath(blocked, room, from, to, step = null) {
   const key = (x, y) => `${x},${y}`;
   const prev = new Map([[key(from.x, from.y), null]]);
   const q = [from];
@@ -128,7 +192,8 @@ function findPath(blocked, room, from, to) {
     for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
       const nx = cur.x + dx, ny = cur.y + dy;
       if (nx < room.x || ny < room.y || nx >= room.x + room.w || ny >= room.y + room.h) continue;
-      if (blocked.has(key(nx, ny)) || prev.has(key(nx, ny))) continue;
+      if (prev.has(key(nx, ny))) continue;
+      if (step ? !step(cur.x, cur.y, nx, ny) : blocked.has(key(nx, ny))) continue;
       prev.set(key(nx, ny), cur);
       q.push({ x: nx, y: ny });
     }
@@ -143,23 +208,72 @@ export class Character {
     this.id = agentId; this.look = look; this.room = room; this.ws = ws; this.blocked = blocked;
     this.x = ws.stand.x + 0.5; this.y = ws.stand.y + 0.5;
     this.dir = 'SE'; this.pose = 'stand'; this.phase = Math.random() * 4;
-    this.status = 'idle'; this.typing = false;
+    this.status = 'idle'; this.typing = false; this.talking = false; this.act = null; this.actLeft = 0;
     this.path = []; this.wait = 1 + Math.random() * 3; this.headY = 0;
   }
 
   tile() { return { x: Math.floor(this.x), y: Math.floor(this.y) }; }
 
-  goTo(tx, ty) {
-    const p = findPath(this.blocked, this.room, this.tile(), { x: tx, y: ty });
+  /** global = may leave the room through doorways (used for meetings / returning home). */
+  goTo(tx, ty, global = false) {
+    const p = global && NAV
+      ? findPath(this.blocked, NAV.grid, this.tile(), { x: tx, y: ty }, NAV.step)
+      : findPath(this.blocked, this.room, this.tile(), { x: tx, y: ty });
     this.path = p || [];
     return !!p;
   }
 
-  update(dt, status) {
+  inHome() {
+    const t = this.tile(), r = this.room;
+    return t.x >= r.x && t.y >= r.y && t.x < r.x + r.w && t.y < r.y + r.h;
+  }
+
+  /** Walks along the current path. Returns true on the tick the path finishes. */
+  follow(dt) {
+    const n = this.path[0];
+    const tx = n.x + 0.5, ty = n.y + 0.5;
+    const dx = tx - this.x, dy = ty - this.y, dist = Math.hypot(dx, dy);
+    const stepLen = SPEED * dt;
+    if (Math.abs(dx) > Math.abs(dy)) this.dir = dx > 0 ? 'SE' : 'NW'; else this.dir = dy > 0 ? 'SW' : 'NE';
+    this.pose = 'walk';
+    if (dist <= stepLen) { this.x = tx; this.y = ty; this.path.shift(); } else { this.x += (dx / dist) * stepLen; this.y += (dy / dist) * stepLen; }
+    if (!this.path.length) { this.pose = 'stand'; return true; }
+    return false;
+  }
+
+  /** Go to a tile (through doorways) because the real meeting state says so. */
+  errand(dt, e) {
+    this.act = null;
+    const here = this.tile(), atGoal = !!e.goal && here.x === e.goal.x && here.y === e.goal.y;
+    if (this.pose === 'sit' && !(e.sit && atGoal)) this.standUp();
+    if (e.goal) {
+      const t = this.tile(), g = e.goal, last = this.path[this.path.length - 1];
+      if ((t.x !== g.x || t.y !== g.y) && (!last || last.x !== g.x || last.y !== g.y)) {
+        if (!this.goTo(g.x, g.y, true)) { this.x = g.x + 0.5; this.y = g.y + 0.5; this.path = []; }
+      }
+    } else { this.path = []; } // hold still
+    if (this.path.length) this.follow(dt);
+    else if (e.sit && e.goal && this.tile().x === e.goal.x && this.tile().y === e.goal.y) {
+      this.pose = 'sit'; this.x = e.goal.x + 0.5; this.y = e.goal.y + 0.4; if (e.dir) this.dir = e.dir; // seated at the table
+    } else { this.pose = 'stand'; if (e.dir) this.dir = e.dir; }
+  }
+
+  update(dt, status, errand = null) {
     this.status = status;
+    this.typing = false;
+    if (errand) { this.errand(dt, errand); return; }
+    if (!this.inHome()) { // back to the own desk after a meeting
+      if (this.pose === 'sit') this.standUp();
+      const s = this.ws.stand, last = this.path[this.path.length - 1];
+      if (!last || last.x !== s.x || last.y !== s.y) {
+        if (!this.goTo(s.x, s.y, true)) { this.x = s.x + 0.5; this.y = s.y + 0.5; this.path = []; }
+      }
+      if (this.path.length) this.follow(dt);
+      return;
+    }
     const seatT = this.ws.seat;
     const atSeat = this.pose === 'sit';
-    this.typing = false;
+    if (this.act && (status !== 'idle' || this.path.length || this.pose !== 'stand' || (this.actLeft -= dt) <= 0)) this.act = null;
 
     if (status === 'working') {
       if (atSeat) { this.typing = true; this.dir = 'NE'; return; }
@@ -175,9 +289,12 @@ export class Character {
       else if (status === 'waiting_approval') {
         const s = this.ws.stand, t = this.tile();
         if (!this.path.length && (t.x !== s.x || t.y !== s.y)) this.goTo(s.x, s.y);
-      } else if (!this.path.length) {
+      } else if (!this.path.length && !this.act) {
         this.wait -= dt;
-        if (this.wait <= 0) { // idle wandering
+        if (this.wait <= 0 && sprites[this.id] && Math.random() < 0.5) { // idle fidget (art characters only)
+          this.act = IDLE_ACTS[Math.floor(Math.random() * IDLE_ACTS.length)];
+          this.actLeft = 3 + Math.random() * 2; this.wait = 2 + Math.random() * 4; this.dir = 'SE';
+        } else if (this.wait <= 0) { // idle wandering
           this.wait = 3 + Math.random() * 6;
           const r = this.room;
           for (let i = 0; i < 8; i++) {
@@ -188,33 +305,24 @@ export class Character {
       }
     }
 
-    // walking along the current path
     if (this.path.length) {
-      const n = this.path[0];
-      const tx = n.x + 0.5, ty = n.y + 0.5;
-      const dx = tx - this.x, dy = ty - this.y, dist = Math.hypot(dx, dy);
-      const stepLen = SPEED * dt;
-      if (Math.abs(dx) > Math.abs(dy)) this.dir = dx > 0 ? 'SE' : 'NW'; else this.dir = dy > 0 ? 'SW' : 'NE';
-      this.pose = 'walk';
-      if (dist <= stepLen) { this.x = tx; this.y = ty; this.path.shift(); } else { this.x += (dx / dist) * stepLen; this.y += (dy / dist) * stepLen; }
-      if (!this.path.length) {
-        this.pose = 'stand';
+      if (this.follow(dt)) {
         const t = this.tile();
         if (status === 'working' && t.x === seatT.x && t.y === seatT.y) this.sitDown();
         else if (status === 'waiting_approval') this.dir = 'NE';
       }
     } else if (!atSeat) {
       this.pose = 'stand';
-      if (status === 'idle' && Math.random() < dt * 0.15) this.dir = ['SE', 'SW', 'NE', 'NW'][Math.floor(Math.random() * 4)];
+      if (status === 'idle' && !this.act && Math.random() < dt * 0.15) this.dir = ['SE', 'SW', 'NE', 'NW'][Math.floor(Math.random() * 4)];
     }
   }
 
   sitDown() { this.pose = 'sit'; this.x = this.ws.seat.x + 0.5; this.y = this.ws.seat.y + 0.3; this.dir = 'NE'; this.path = []; }
-  standUp() { this.pose = 'stand'; this.x = this.ws.seat.x + 0.5; this.y = this.ws.seat.y + 0.5; this.dir = 'SE'; this.wait = 2; }
+  standUp() { this.pose = 'stand'; this.x = Math.floor(this.x) + 0.5; this.y = Math.floor(this.y) + 0.5; this.dir = 'SE'; this.wait = 2; }
 
   /** Rough screen-space hit box (canvas pixels). */
   hitBox() {
     const [fx, fy] = sp(this.x, this.y, 0);
-    return { x: fx - 8, y: fy - 25, w: 16, h: 27 };
+    return sprites[this.id] ? { x: fx - 9, y: fy - 35, w: 18, h: 37 } : { x: fx - 8, y: fy - 25, w: 16, h: 27 };
   }
 }

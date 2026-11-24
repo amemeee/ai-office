@@ -13,6 +13,7 @@ const config = require('../config');
 const ollama = require('./ollama');
 const bus = require('./bus');
 
+const BOSS_ID = 'developer'; // Dex runs the team
 const runtime = new Map(); // agentId -> { busy, paused, lastError }
 
 function httpError(status, message) {
@@ -53,7 +54,7 @@ function snapshot(row) {
     description: row.description, system_prompt: row.system_prompt,
     model: row.model, effective_model: row.model || config.defaultModel,
     requires_approval: !!row.requires_approval,
-    status,
+    status, boss: row.id === BOSS_ID,
     current_task: s.busy ? s.busy.title : null,
     busy_kind: s.busy ? s.busy.kind : null,
     paused: s.paused,
@@ -156,6 +157,34 @@ async function chat(id, text, { onToken, signal }) {
       if (out) db.prepare('INSERT INTO messages (agent_id, role, content) VALUES (?,?,?)').run(id, 'assistant', out);
       return { stopped: true };
     }
+    rt(id).lastError = e.message;
+    throw e;
+  } finally {
+    signal?.removeEventListener('abort', onExternalAbort);
+    end(id);
+  }
+}
+
+/**
+ * One-off generation for the meeting service. The agent is genuinely busy
+ * (status "working") while it runs; nothing is written to its chat history.
+ */
+async function ask(id, { title, prompt, signal, onToken }) {
+  preflight(id);
+  const row = getRow(id);
+  const controller = begin(id, { kind: 'meeting', title });
+  const onExternalAbort = () => controller.abort();
+  signal?.addEventListener('abort', onExternalAbort);
+  let out = '';
+  try {
+    await ollama.chatStream({
+      model: row.model || config.defaultModel, signal: controller.signal,
+      messages: [{ role: 'system', content: row.system_prompt }, { role: 'user', content: prompt }],
+      onToken: (t) => { out += t; onToken?.(out); },
+    });
+    return { text: out, stopped: false };
+  } catch (e) {
+    if (controller.signal.aborted) return { text: out, stopped: true };
     rt(id).lastError = e.message;
     throw e;
   } finally {
@@ -283,6 +312,6 @@ function resumeQueues() {
 }
 
 module.exports = {
-  list, get, update, preflight, chat, getMessages, clearMessages,
+  BOSS_ID, ask, list, get, update, preflight, chat, getMessages, clearMessages,
   createTask, listTasks, getTask, decide, pause, resume, stop, resumeQueues,
 };

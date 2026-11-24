@@ -2,7 +2,8 @@
 // isometric boxes. Furniture is sorted by depth together with the characters.
 import { V, sp, shade, px, poly, box, floorRect, faceQuad, glow, wallText } from './draw.js';
 
-export const W = 20, H = 16;
+export const BW = 20, BH = 16;   // main building
+export const W = 28, H = 16;     // whole map: the building plus the meeting room on the east side
 export const WALL_H = 34, PART_H = 22, RAIL_H = 7, T = 0.2;
 export const OX = H * 16 + 16, OY = 44;
 export const CANVAS_W = W * 16 + OX + 16, CANVAS_H = (W + H) * 8 + OY + 18;
@@ -16,6 +17,8 @@ export const ROOMS = {
   email: { id: 'email', x: 0, y: 9, w: 9, h: 7, wall: '#b8645d', trim: '#7d3d39', floor: ['#a0605c', '#965753'], label: 'Email' },
   automation: { id: 'automation', x: 11, y: 9, w: 9, h: 7, wall: '#6a8aa0', trim: '#40586b', floor: ['#8398a7', '#788e9d'], label: 'Automation' },
 };
+const MEETING = { id: 'meeting', x: 21, y: 5, w: 7, h: 7, wall: '#8d97a8', trim: '#4f5b70', floor: ['#b5bcc8', '#a8b0be'], label: 'Meeting room' };
+ROOMS.meeting = MEETING;
 const CORR = { wall: '#c9a77a', trim: '#8f6f47', floor: ['#d3b78e', '#c9ac81'] };
 
 export const STATIONS = {
@@ -44,6 +47,27 @@ function obj(x, y, w, d, draw, { block = true, key } = {}) {
   if (block) blockRect(x, y, w, d);
 }
 
+// ---- navigation across the whole office -----------------------------------------
+// Walls are solid except at the doorways drawn in build(): [tileInside, tileOutside].
+const DOORS = new Set();
+for (const [a, b, c, d] of [[4, 6, 4, 7], [8, 3, 9, 3], [10, 3, 11, 3], [15, 6, 15, 7], [4, 8, 4, 9], [8, 12, 9, 12], [15, 8, 15, 9], [10, 12, 11, 12], [20, 7, 21, 7]]) {
+  DOORS.add(`${a},${b}|${c},${d}`); DOORS.add(`${c},${d}|${a},${b}`);
+}
+export const GRID = { x: 0, y: 0, w: W, h: H };
+/** Tiles that have floor: the main building, the corridor spur to the meeting room, and the meeting room. */
+export const inside = (x, y) => (x >= 0 && y >= 0 && ((x < BW && y < BH) || (x === 20 && (y === 7 || y === 8)) || roomAt(x, y) === MEETING));
+/** May a character step from tile a to the adjacent tile b? */
+export function navStep(ax, ay, bx, by) {
+  if (!inside(bx, by) || blocked.has(`${bx},${by}`)) return false;
+  return roomAt(ax, ay) === roomAt(bx, by) || DOORS.has(`${ax},${ay}|${bx},${by}`);
+}
+/** Seats around the meeting-room table (tile, facing, seated). Dex, the boss, takes the head of the table. */
+export const HUB = {
+  developer: { x: 26, y: 8, dir: 'SW', sit: true }, documents: { x: 24, y: 6, dir: 'SW', sit: true },
+  email: { x: 22, y: 8, dir: 'SE', sit: true }, automation: { x: 24, y: 9, dir: 'SE', sit: true },
+};
+export const roomOf = (x, y) => roomAt(x, y);
+
 // ---- floor (cached by the renderer) --------------------------------------------
 function rug(ctx, x, y, w, h, main, border) {
   floorRect(ctx, border, x, y, w, h);
@@ -55,6 +79,7 @@ function rug(ctx, x, y, w, h, main, border) {
 export function drawFloor(ctx) {
   for (let y = 0; y < H; y++) {
     for (let x = 0; x < W; x++) {
+      if (!inside(x, y)) continue;
       const r = roomAt(x, y);
       const base = (r || CORR).floor[(x + y) & 1];
       floorRect(ctx, base, x, y, 1, 1);
@@ -75,10 +100,16 @@ export function drawFloor(ctx) {
   floorRect(ctx, '#5a3b28', 3.9, 7.0, 1.2, 0.6); floorRect(ctx, '#5a3b28', 9.0, 3.0, 0.6, 1.0);
   floorRect(ctx, '#5a3b28', 15.0, 7.0, 1.0, 0.6); floorRect(ctx, '#5a3b28', 10.4, 3.0, 0.6, 1.0);
   floorRect(ctx, '#5a3b28', 3.9, 8.4, 1.2, 0.6); floorRect(ctx, '#5a3b28', 10.4, 12.0, 0.6, 1.0);
-  floorRect(ctx, '#5a3b28', 15.0, 8.4, 1.0, 0.6);
+  floorRect(ctx, '#5a3b28', 15.0, 8.4, 1.0, 0.6); floorRect(ctx, '#5a3b28', 20.4, 7.0, 0.6, 1.0);
+  rug(ctx, 22.4, 6.4, 4.2, 3.2, '#3d4a5e', '#c9d1de'); // meeting-room rug
   // slab edge (the "dollhouse" thickness) along the two front sides
-  for (let x = 0; x < W; x++) poly(ctx, '#6b4a33', [sp(x, H, 0), sp(x + 1, H, 0), sp(x + 1, H, -7), sp(x, H, -7)]);
-  for (let y = 0; y < H; y++) poly(ctx, '#4d3526', [sp(W, y, 0), sp(W, y + 1, 0), sp(W, y + 1, -7), sp(W, y, -7)]);
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      if (!inside(x, y)) continue;
+      if (!inside(x, y + 1)) poly(ctx, '#6b4a33', [sp(x, y + 1, 0), sp(x + 1, y + 1, 0), sp(x + 1, y + 1, -7), sp(x, y + 1, -7)]);
+      if (!inside(x + 1, y)) poly(ctx, '#4d3526', [sp(x + 1, y, 0), sp(x + 1, y + 1, 0), sp(x + 1, y + 1, -7), sp(x + 1, y, -7)]);
+    }
+  }
 }
 
 // ---- walls ---------------------------------------------------------------------
@@ -344,8 +375,8 @@ function waterCooler(x, y) {
 // ---- build rooms ----------------------------------------------------------------
 function build() {
   // Outer back walls (full height) and the partitions (shorter, so you can see in).
-  for (let i = 0; i < W; i++) wallSeg('y', i, 0, WALL_H);
-  for (let j = 0; j < H; j++) wallSeg('x', j, 0, WALL_H);
+  for (let i = 0; i < BW; i++) wallSeg('y', i, 0, WALL_H);
+  for (let j = 0; j < BH; j++) wallSeg('x', j, 0, WALL_H);
   add(-0.7, (ctx) => box(ctx, -T, -T, T, T, WALL_H, CORR.wall));
   wall('x', 0, 6, 11, PART_H, 3);        // documents
   wall('y', 0, 8, 9, PART_H, 4);         // email
@@ -420,6 +451,31 @@ function build() {
   obj(15.5, 13.2, 3, 1.2, (ctx) => { table(15.5, 13.2, 3, 1.2, 9, '#7d8c97')(ctx); box(ctx, 16.0, 13.5, 0.7, 0.5, 3, '#e8b030', { z: 9 }); box(ctx, 17.4, 13.4, 0.5, 0.5, 4, '#3b4a56', { z: 9 }); });
   obj(11.3, 14.6, 1, 1, plant(11.3, 14.6, 1.1)); obj(19.0, 14.5, 1, 1, plant(19.0, 14.5, 1.0));
   floorLamp(11.4, 12.2);
+
+  // ---------------- Meeting room ----------------
+  wall('x', 5, 11, 21, PART_H, 7);                       // west wall, doorway to the corridor
+  for (let i = 21; i < 28; i++) wallSeg('y', i, 5, WALL_H); // back wall
+  add(26.7, (ctx) => box(ctx, 21 - T, 5 - T, T, T, WALL_H, MEETING.wall));
+  rail('x', 5, 11, 28, MEETING); rail('y', 21, 27, 12, MEETING);
+  doorFrame('x', 7, 21, RAIL_H + 12);
+  windowOn('y', 5, 21); windowOn('y', 5, 26); windowOn('x', 21, 9);
+  whiteboard('y', 5, 22.6, 25.4, [[0.1, 0.9, 0, '#2e86c1'], [0.1, 0.6, 1, '#c0392b'], [0.1, 0.8, 2, '#27ae60'], [0.1, 0.5, 3, '#8e44ad']], 6, 27);
+  clock(25.9, 5, 27);
+  obj(23, 7, 3, 2, (ctx) => { // long table with laptops, papers and a coffee pot
+    table(23, 7, 3, 2, 9, '#8f7b66')(ctx);
+    paper(ctx, 23.3, 7.3, 9, 0.5, 0.4); paper(ctx, 24.4, 7.2, 9, 0.5, 0.4); paper(ctx, 23.5, 8.3, 9, 0.5, 0.4); paper(ctx, 24.7, 8.4, 9, 0.5, 0.4);
+    box(ctx, 24.0, 7.8, 0.35, 0.35, 4, '#e8e8e8', { z: 9 }); box(ctx, 24.07, 7.87, 0.2, 0.2, 2, '#5a3b28', { z: 13 });
+    box(ctx, 25.2, 7.7, 0.4, 0.3, 1, '#2c2c34', { z: 9 });
+  });
+  const seat = (x, y, side) => {
+    add(x + y + 0.5, (ctx) => { box(ctx, x + 0.45, y + 0.45, 0.1, 0.1, 5, '#2a2a2a'); box(ctx, x + 0.14, y + 0.14, 0.72, 0.72, 3, shade(MEETING.trim, 1.35), { z: 5 }); });
+    const back = { n: [0.14, 0.08, 0.72, 0.12], s: [0.14, 0.8, 0.72, 0.12], w: [0.08, 0.14, 0.12, 0.72], e: [0.8, 0.14, 0.12, 0.72] }[side];
+    add(x + y + (side === 's' || side === 'e' ? 1.6 : 0.4), (ctx) => box(ctx, x + back[0], y + back[1], back[2], back[3], 10, shade(MEETING.trim, 1.15), { z: 8 }));
+  };
+  seat(24, 6, 'n'); seat(22, 8, 'w'); seat(24, 9, 's'); seat(26, 8, 'e');
+  obj(26.3, 5.2, 0.8, 0.8, (ctx) => { box(ctx, 26.3, 5.2, 0.8, 0.8, 26, '#c9514a'); faceQuad(ctx, '#1d2530', 'y', 6.0, 26.4, 27.0, 14, 23); faceQuad(ctx, '#7fd6ff', 'y', 6.0, 26.45, 26.7, 17, 20); });
+  obj(27.0, 10.9, 1, 1, plant(27.0, 10.9, 1.2)); obj(21.2, 10.7, 1, 1, plant(21.2, 10.7, 1.0));
+  floorLamp(21.3, 5.4);
 
   // ---------------- Corridor & lounge ----------------
   waterCooler(10.1, 0.5);

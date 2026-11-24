@@ -13,11 +13,15 @@ const notConnected = (name) => async () => {
 const integrations = [
   { id: 'pdf', name: 'PDF / document processing', status: 'planned', agent: 'documents',
     description: 'Local text extraction for uploaded PDFs (no cloud).', run: notConnected('PDF') },
-  { id: 'email', name: 'Email (IMAP/SMTP)', status: 'planned', agent: 'email',
-    description: 'Read inbox and send approved drafts. Sending will always require approval.', run: notConnected('Email') },
+  { id: 'email', name: 'Email inbox (IMAP, read-only)', agent: 'email',
+    get status() { return require('./email').configured() ? 'connected' : 'not_configured'; },
+    approvalNote: 'Approving marks the draft as approved. Sending is not implemented: copy it into your mail client.',
+    description: 'Reads your inbox read-only. Configure IMAP_* in .env. Sending is not implemented.', run: notConnected('Email sending') },
   { id: 'n8n', name: 'n8n workflows', status: 'planned', agent: 'automation',
     description: 'Trigger approved workflows through the n8n webhook API.', run: notConnected('n8n') },
 ];
 
-const list = () => integrations.map(({ run, ...info }) => info);
+const list = () => integrations.map((i) => ({
+  id: i.id, name: i.name, status: i.status, agent: i.agent, description: i.description, approvalNote: i.approvalNote || null,
+}));
 module.exports = { list, integrations };

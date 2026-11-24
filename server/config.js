@@ -15,4 +15,12 @@ module.exports = {
   numCtx: num(process.env.OLLAMA_NUM_CTX, 4096),
   dbPath: path.resolve(__dirname, '..', process.env.DB_PATH || 'data/ai-office.db'),
   historyLimit: 20,
+  // Read-only inbox access. Credentials stay on the server and are never sent to the browser.
+  imap: {
+    host: process.env.IMAP_HOST || '',
+    port: num(process.env.IMAP_PORT, 993),
+    secure: process.env.IMAP_SECURE !== 'false',
+    user: process.env.IMAP_USER || '',
+    pass: process.env.IMAP_PASS || '',
+  },
 };

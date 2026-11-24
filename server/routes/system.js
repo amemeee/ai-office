@@ -5,6 +5,7 @@ const agents = require('../services/agents');
 const bus = require('../services/bus');
 const ollama = require('../services/ollama');
 const integrations = require('../services/integrations');
+const meeting = require('../services/meeting');
 
 const router = express.Router();
 
@@ -32,15 +33,17 @@ router.get('/events', (req, res) => {
   const send = (event, data) => res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
   send('state', agents.list());
   send('health', publicHealth());
+  if (meeting.get()) send('meeting', meeting.get());
 
   const onState = (d) => send('state', d);
   const onTask = (d) => send('task', d);
   const onHealth = (d) => send('health', d);
-  bus.on('state', onState); bus.on('task', onTask); bus.on('health', onHealth);
+  const onMeeting = (d) => send('meeting', d);
+  bus.on('state', onState); bus.on('task', onTask); bus.on('health', onHealth); bus.on('meeting', onMeeting);
   const beat = setInterval(() => res.write(': ping\n\n'), 25000);
   req.on('close', () => {
     clearInterval(beat);
-    bus.off('state', onState); bus.off('task', onTask); bus.off('health', onHealth);
+    bus.off('state', onState); bus.off('task', onTask); bus.off('health', onHealth); bus.off('meeting', onMeeting);
   });
 });
 

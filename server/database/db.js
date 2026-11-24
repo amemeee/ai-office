@@ -46,11 +46,24 @@ CREATE TABLE IF NOT EXISTS messages (
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_messages_agent ON messages(agent_id, id);
+
+CREATE TABLE IF NOT EXISTS meetings (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  kind TEXT NOT NULL,                 -- 'meeting' | 'round'
+  topic TEXT NOT NULL,
+  status TEXT NOT NULL,               -- running | done | cancelled | failed
+  transcript TEXT NOT NULL DEFAULT '[]',
+  minutes TEXT,
+  error TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  finished_at TEXT
+);
 `);
 
 seedAgents(db);
 
 // A task left "running" by a previous process was interrupted: queue it again.
+db.exec("UPDATE meetings SET status='cancelled', error='Server restarted', finished_at=datetime('now') WHERE status='running'");
 db.exec("UPDATE tasks SET status='queued', started_at=NULL WHERE status='running'");
 
 module.exports = db;

@@ -25,6 +25,8 @@ app.use('/api', (req, res, next) => {
 app.use(express.json({ limit: '1mb' }));
 app.use('/api/agents', require('./routes/agents'));
 app.use('/api/tasks', require('./routes/tasks'));
+app.use('/api/email', require('./routes/email'));
+app.use('/api/meeting', require('./routes/meeting'));
 app.use('/api', require('./routes/system'));
 app.use('/api', (req, res) => res.status(404).json({ error: 'Not found' }));
 
@@ -33,9 +35,10 @@ app.use(express.static(path.join(__dirname, '..', 'public')));
 // eslint-disable-next-line no-unused-vars
 app.use((err, req, res, next) => {
   const status = err.status || (err.type === 'entity.parse.failed' ? 400 : 500);
-  if (status >= 500) console.error(err);
+  const expected = !!err.status || status === 400; // errors we raised on purpose are safe to show
+  if (!expected) console.error(err);
   if (res.headersSent) return res.end();
-  res.status(status).json({ error: status >= 500 ? 'Internal server error' : err.message });
+  res.status(status).json({ error: expected ? err.message : 'Internal server error' });
 });
 
 app.listen(config.port, config.host, () => {
