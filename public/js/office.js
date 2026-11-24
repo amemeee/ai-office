@@ -83,7 +83,14 @@ export class Office {
       return { ...t, el };
     });
     this.art = {};
-    for (const [k, src] of Object.entries(B.SPRITE_ART)) { const img = new Image(); img.src = src; this.art[k] = img; }
+    const artNames = Object.entries(B.SPRITE_ART);
+    let artLoaded = 0, artFailed = false;
+    for (const [k, src] of artNames) {
+      const img = new Image();
+      img.onload = () => { if (++artLoaded === artNames.length && !artFailed) B.setArtReady(true); };
+      img.onerror = () => { artFailed = true; B.setArtReady(false); }; // no art files: the plain box car is used
+      img.src = src; this.art[k] = img;
+    }
     this.vehicle = null; // the clicked vehicle (basement)
     this.card = document.createElement('div');
     this.card.id = 'vehicle-card'; this.card.hidden = true;
@@ -364,7 +371,7 @@ export class Office {
     }
   }
 
-  /** 2D-art vehicles (Dex's Supra): drawn hi-res; mirrored views give all four driving directions. */
+  /** 2D-art vehicles (Dex's car): drawn hi-res; mirrored views give all four driving directions. */
   drawParkedArt(ctx, v, t) {
     this.occ = this.occ || document.createElement('canvas');
     const W = 112, H = 84, o = this.occ, oc = o.getContext('2d');

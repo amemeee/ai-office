@@ -12,6 +12,27 @@ A locally hosted AI agent workspace shown as a retro isometric office. Each char
 
 ---
 
+## Screenshots
+
+**The whole app:** agent list on the left, the office in the middle, and the selected agent (here Dex's Team tab with staff-check notes) on the right.
+
+![ai-office overview](docs/images/ui-overview.png)
+
+### The three floors
+
+| Rooftop | Ground floor | B1 Parking |
+|---|---|---|
+| ![Rooftop with garden, pool and basketball court](docs/images/rooftop.png) | ![Ground floor with four departments and a meeting room](docs/images/ground-floor.png) | ![Basement car park](docs/images/basement.png) |
+| Garden, swimming pool and a basketball half-court. | Development, Documents, Email and Automation, plus the meeting room. | Car bays, motorcycle zone and EV charging. Vehicles drive out while their owner is working. |
+
+### Inspect a vehicle
+
+Click any vehicle in the garage to zoom to it and turn it around. This is Dex's car, one of four views.
+
+![Vehicle card with a turnable preview](docs/images/vehicle-card.png)
+
+---
+
 ## 1. Requirements
 
 | What | Version |
@@ -122,9 +143,9 @@ Use the switcher at the top-left of the office:
 - **Ground floor:** the four departments, the corridor and the meeting room.
 - **B1 Parking:** a garage with car bays, a motorcycle zone and EV charging.
 
-In the garage, each agent owns a vehicle: Dex's Supra, Paige's car, Otto's van and Milo's motorcycle. A vehicle **drives out while its owner is really working** and drives back to a random free bay afterwards. A few visitor cars come and go as background traffic only (decorative).
+In the garage, each agent owns a vehicle: Dex's sports car, Paige's car, Otto's van and Milo's motorcycle. A vehicle **drives out while its owner is really working** and drives back to a random free bay afterwards. A few visitor cars come and go as background traffic only (decorative).
 
-**Click a vehicle** to zoom to it and open its card: what it is, whether it is parked, driving or out, which bay, and the owner's live status. Turn the preview with ◀ ▶ (or the arrow keys). Dex's Supra has nine views (four diagonals, front, rear, both sides and top); other vehicles have four.
+**Click a vehicle** to zoom to it and open its card: what it is, whether it is parked, driving or out, which bay, and the owner's live status. Turn the preview with ◀ ▶ (or the arrow keys). Vehicles have four views (the diagonals). If you add your own artwork for Dex's car (see *Optional vehicle artwork* below) it gets nine: the diagonals plus front, rear, both sides and top.
 
 ### Look
 
@@ -149,6 +170,26 @@ python tools/slice-sheet.py public/assets/dex-idle-poses.jfif dex 156 drink,hold
 ```
 
 For vehicles: `tools/slice-vehicle.py` (3/4 views) and `tools/slice-flat.py` (side, front, rear, top). Results go in `public/assets/vehicles/`.
+
+### Sample assets
+
+These are the art files the app uses (all transparent PNGs, generated and then cut from green-screen sheets).
+
+**Dex's character poses:** standing, two walking frames, sitting at the desk, hand raised (waiting for approval), and the idle fidgets that only play while he really is idle.
+
+![Dex character poses](docs/images/assets-characters.png)
+
+### Optional vehicle artwork (not included)
+
+Dex's car is drawn as a plain silver box car by default. To use your own 2D artwork instead, put transparent PNGs in `public/assets/vehicles/` (this folder is git-ignored, so your art stays on your machine):
+
+| File | View |
+|---|---|
+| `sportscar-rear.png` | 3/4 view from the rear-right |
+| `sportscar-front.png` | 3/4 view from the front-right |
+| `sportscar-flat-side.png`, `-flat-front.png`, `-flat-rear.png`, `-flat-top.png` | flat side, front, rear and top views |
+
+All six files are needed; if any is missing the app falls back to the box car. Make sure you have the right to use any artwork you add, and do not publish artwork of real brands or models you do not have permission for. The cutting scripts `tools/slice-vehicle.py` and `tools/slice-flat.py` turn green-screen sheets into these files.
 
 ### Add or change agents
 

@@ -1,3 +1,6 @@
 node_modules/
 data/
 .env
+
+# optional, locally generated vehicle artwork (not published)
+public/assets/vehicles/

@@ -203,7 +203,7 @@ const ART_VIEWS = [
   { name: 'Front', img: 'flatFront', flat: true }, { name: 'Front · right side', img: 'front' },
   { name: 'Right side', img: 'flatSide', flat: true, mirror: true }, { name: 'Top', img: 'flatTop', flat: true },
 ];
-export const viewsFor = (e) => (e.mover && e.mover.art ? ART_VIEWS : BOX_VIEWS);
+export const viewsFor = (e) => (e.mover && e.mover.art && artReady ? ART_VIEWS : BOX_VIEWS);
 
 /**
  * Draws one vehicle large into the preview canvas, seen from the chosen angle.
@@ -212,7 +212,7 @@ export const viewsFor = (e) => (e.mover && e.mover.art ? ART_VIEWS : BOX_VIEWS);
  */
 export function drawPreview(cv, e, view, art) {
   const views = viewsFor(e), v = views[((view % views.length) + views.length) % views.length], ctx = cv.getContext('2d');
-  if (e.mover && e.mover.art) {
+  if (e.mover && e.mover.art && artReady) {
     cv.width = 460; cv.height = 260; cv.classList.remove('pixel');
     const img = art[v.img];
     if (!img || !img.complete || !img.naturalWidth) return false;
@@ -260,10 +260,12 @@ let clock = 0;
 let barrierOpen = false;
 let lastStatus = {};
 const movers = [];
+let artReady = false; // true only when every optional artwork file loaded; otherwise the box car is drawn
+export const setArtReady = (v) => { artReady = !!v; };
 export const SPRITE_ART = {
-  rear: 'assets/vehicles/supra-rear.png', front: 'assets/vehicles/supra-front.png',
-  flatSide: 'assets/vehicles/supra-flat-side.png', flatFront: 'assets/vehicles/supra-flat-front.png',
-  flatRear: 'assets/vehicles/supra-flat-rear.png', flatTop: 'assets/vehicles/supra-flat-top.png',
+  rear: 'assets/vehicles/sportscar-rear.png', front: 'assets/vehicles/sportscar-front.png',
+  flatSide: 'assets/vehicles/sportscar-flat-side.png', flatFront: 'assets/vehicles/sportscar-flat-front.png',
+  flatRear: 'assets/vehicles/sportscar-flat-rear.png', flatTop: 'assets/vehicles/sportscar-flat-top.png',
 };
 
 class Mover {
@@ -339,9 +341,9 @@ export function update(dt, status) {
 }
 
 /** Moving/parked box vehicles for this frame, to be merged with the static items by depth. */
-export const dynamicItems = () => movers.filter((m) => m.art == null && m.state !== 'away').map((m) => ({ key: m.key, draw: (ctx) => m.draw(ctx) }));
+export const dynamicItems = () => movers.filter((m) => (m.art == null || !artReady) && m.state !== 'away').map((m) => ({ key: m.key, draw: (ctx) => m.draw(ctx) }));
 /** 2D-art vehicles for this frame: { art, x, y, dir, key }. */
-export const spriteMovers = () => movers.filter((m) => m.art && m.state !== 'away').map((m) => ({ art: m.art, x: m.pos.x, y: m.pos.y, dir: m.dir, key: m.key, lift: m.lift, w: m.spriteW }));
+export const spriteMovers = () => movers.filter((m) => m.art && artReady && m.state !== 'away').map((m) => ({ art: m.art, x: m.pos.x, y: m.pos.y, dir: m.dir, key: m.key, lift: m.lift, w: m.spriteW }));
 /** Everything that may stand in front of a sprite at depth `key`. */
 export const inFront = (key) => [...items.filter((it) => it.key > key), ...dynamicItems().filter((it) => it.key > key)];
 /** Label position and text for an owner's vehicle (it stays at its bay, marked as out, while away). */
@@ -434,9 +436,9 @@ function build() {
   car(11.45, S, '#23324d', 's', 'sedan');
   car(17.45, S, '#7a3f8f', 's', 'hatch');
 
-  // vehicles that move. Owners: Dex (Supra, 2D art), Paige (hatch), Otto (van), Milo (motorcycle).
+  // vehicles that move. Owners: Dex (sports car, optional 2D art), Paige (hatch), Otto (van), Milo (motorcycle).
   const own = (m, owner, base, z) => { m.owner = owner; const e = entryOf(m); if (e) e.owner = owner; VEHICLES.push({ owner, base, mover: m, z }); return m; };
-  own(mover({ type: 'sprite', desc: 'silver Toyota Supra', art: 'supra', cx: 6.0, cy: 5.05, dir: 'N', lift: 6, spriteW: 56 }), 'developer', "Dex's Supra", 20);
+  own(mover({ type: 'sprite', desc: 'silver sports car', art: 'sportscar', col: '#b9bec4', kind: 'sedan', cx: 6.0, cy: 5.05, dir: 'N', lift: 6, spriteW: 56 }), 'developer', "Dex's sports car", 20);
   own(mover({ type: 'car', cx: 4.0, cy: 5.05, dir: 'N', col: '#4f9a6a', kind: 'hatch', desc: 'green hatchback' }), 'documents', "Paige's car", 24);
   own(mover({ type: 'car', cx: 6.0, cy: 11.0, dir: 'S', col: '#5d7a99', kind: 'van', desc: 'blue-grey van' }), 'automation', "Otto's van", 26);
   own(mover({ type: 'bike', cx: 4.55, cy: 14.3, dir: 'S', col: '#c0392b', desc: 'red motorcycle' }), 'email', "Milo's motorcycle", 14);
