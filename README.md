@@ -1,11 +1,62 @@
 # ai-office
 
+> **Beta version (v0.1).** This project is a work in progress. It runs and is usable every day, but expect rough edges, missing pieces and changes. **Download it and make it yours:** change the agents, the instructions, the art and the office layout to suit you. See [Make it yours](#make-it-yours).
+>
+> ⭐ **Don't forget the star!** If you like it, click **Star** at the top of the GitHub page. It helps a lot.
+
 A locally hosted AI agent workspace shown as a retro isometric office. Each character is an AI agent powered by **your own Ollama model**. Everything runs on your PC: no cloud APIs, no Docker, no accounts.
 
 - Four agents with their own desks, chat, instructions and task queue: **Dex** (Developer, and the boss), **Paige** (Documents), **Milo** (Email) and **Otto** (Automation).
 - **Statuses are real.** An agent shows *Working* only while a real Ollama request is running. Nothing is faked.
 - Works as an office dashboard even when Ollama is offline.
 - Three floors to explore: a rooftop (garden, pool, basketball court), the office, and a basement car park.
+
+## Current features (beta)
+
+**Agents**
+- Four agents, each with its own desk, system instructions and model (change them in the Profile tab, saved in SQLite).
+- Streaming chat with each agent. Stop a reply, or pause an agent.
+- Live statuses taken from real activity: Idle, Working, Waiting for approval, Error, Paused, plus the current task.
+- If Ollama is offline the office still works, and the app tells you clearly.
+
+**Tasks and approvals**
+- A task queue per agent with history saved in SQLite.
+- Email and Automation results wait for your **Approve / Reject**. Approving only marks the result; nothing is sent or run.
+
+**Email (Milo)**
+- Read-only inbox over IMAP (nothing is marked read, moved, deleted or sent).
+- Summarise a mail, draft a reply, or triage the latest 10.
+
+**Dex the boss**
+- **Check on staff:** Dex walks to each desk and reviews the real data about each agent.
+- **Hold meeting:** everyone sits in the meeting room, each agent reports, and Dex writes minutes with action items.
+- Works from the Team tab or from plain chat ("check your team", "hold a meeting"). Meetings are saved in SQLite.
+
+**The office**
+- Isometric pixel-art office drawn procedurally, with desks, rooms, doorways and a meeting room.
+- Characters walk between rooms, sit at their desk while working, stand with a raised hand when they need approval, and fidget while idle.
+- Click a character to zoom to them. Optional 2D character art (included for Dex); the others use built-in pixel characters.
+- Windows follow the real clock (day, dusk, night).
+
+**Three floors**
+- **Rooftop:** garden, swimming pool and a basketball half-court.
+- **Ground floor:** the four departments plus the meeting room.
+- **B1 Parking:** car bays, motorcycle zone and EV charging.
+- Each agent owns a vehicle that **drives out while that agent is really working** and returns to a random free bay. Visitor cars come and go as background scenery only.
+- Click any vehicle for a card with its live state, and turn it around in a small viewer.
+
+**Look and privacy**
+- Black, grey and white website theme. The B&W / Colour button changes only the office picture.
+- Local only: listens on `127.0.0.1`, no cloud calls, no telemetry. Credentials stay on the server.
+
+### Known limits (beta)
+- Windows 11 is the only system it has been tested on.
+- Sending email is not implemented. PDF processing and n8n workflows are placeholders.
+- Approving a result only marks it approved.
+- The default 3B model is small: its answers can be vague or wrong. Use a bigger model for better quality.
+- Agents stay on the ground floor. The rooftop and garage are scenery, apart from the vehicles that follow agent status.
+- Single user, no login (it is meant to run on your own PC).
+- Vehicle artwork is not included; Dex's car is a plain box car until you add your own.
 
 > **Built and tested on this PC:** Windows 11 Home, Intel Core i5-12400, 16 GB RAM, integrated Intel graphics (no dedicated GPU), Node 22, Ollama with `qwen2.5-coder:3b`.
 > That is a modest machine, so the app is built to stay light: the office is drawn on a small canvas at about 30 fps, there is no database server, and the only AI load is the one local model. It uses only Node, Express and SQLite, so it should run on other systems too, but only Windows has been tested.
@@ -198,6 +249,24 @@ Agents live in the `agents` table (seeded in `server/database/seed.js`) and need
 ### Connect more tools
 
 `server/services/integrations.js` lists PDF extraction, email sending and n8n workflows as planned. Implement `run()` there and the UI shows the real status.
+
+---
+
+## Make it yours
+
+This is a beta and it is meant to be changed. Download it and shape it into your own office:
+
+1. **Get it:** click **Code → Download ZIP** on GitHub, or fork the repository and clone your fork.
+2. **Run it** with the steps in *Install and run* above.
+3. **Rename and retrain your agents:** open each agent's **Profile** tab and rewrite its system instructions, or change the names and roles in `server/database/seed.js`.
+4. **Use your own models:** pick a different model per agent (any model installed in Ollama).
+5. **Draw your own characters and cars:** drop your own PNGs into `public/assets/` (see *Customise*).
+6. **Rebuild the office:** rooms, furniture, the rooftop and the garage are all code in `public/js/scene.js`, `roof.js` and `basement.js`.
+7. **Plug in your tools:** add real integrations in `server/services/integrations.js`.
+
+Found a bug or built something nice? Issues and pull requests are welcome.
+
+⭐ **Enjoying ai-office? Don't forget the star!**
 
 ---
 
